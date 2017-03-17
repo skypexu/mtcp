@@ -1347,9 +1347,9 @@ mtcp_readv(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV)
 
 	/* stream should be in ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2 */
 	cur_stream = socket->stream;
-    if (cur_stream == NULL &&
-        (cur_stream->state != TCP_ST_FIN_WAIT_1 ||
-         cur_stream->state != TCP_ST_FIN_WAIT_2 ||
+    if (cur_stream == NULL ||
+        (cur_stream->state != TCP_ST_FIN_WAIT_1 &&
+         cur_stream->state != TCP_ST_FIN_WAIT_2 &&
          cur_stream->state != TCP_ST_ESTABLISHED)) {
 		errno = ENOTCONN;
         return -1;
