@@ -1760,10 +1760,12 @@ mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout)
 
     ret = 0;
 
-    timeo.tv_sec = timeout/1000;
-    timeo.tv_nsec = (long)(timeout % 1000) * 1000000;
-    clock_gettime(CLOCK_REALTIME, &future);
-    timespecadd(&future, &timeo);
+    if (timeout >= 0) {
+        timeo.tv_sec = timeout/1000;
+        timeo.tv_nsec = (long)(timeout % 1000) * 1000000;
+        clock_gettime(CLOCK_REALTIME, &future);
+        timespecadd(&future, &timeo);
+    }
 
     if (event) { // write event
 	    sndvar = cur_stream->sndvar;
@@ -1797,7 +1799,7 @@ mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout)
                 ret = 1;
                 break;
             }
-		    TRACE_SNDBUF("Waiting for available recv buffer...\n");
+		    TRACE_RCVBUF("Waiting for available recv buffer...\n");
             if (timeout < 0) {
 			    pthread_cond_wait(&rcvvar->read_cond, &rcvvar->read_lock);
             } else if (pthread_cond_timedwait(&rcvvar->read_cond, &rcvvar->read_lock, &future)) {
