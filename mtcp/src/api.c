@@ -1212,14 +1212,15 @@ mtcp_recv(mctx_t mctx, int sockid, char *buf, size_t len, int flags)
 		return -1;
 	}
 	
-	/* stream should be in ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT */
+	/* stream should be in ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2 */
 	cur_stream = socket->stream;
-        if (!cur_stream || 
-	    !(cur_stream->state >= TCP_ST_ESTABLISHED && 
-	      cur_stream->state <= TCP_ST_CLOSE_WAIT)) {
-		errno = ENOTCONN;
-		return -1;
-	}
+    if (cur_stream == NULL ||
+        (cur_stream->state != TCP_ST_FIN_WAIT_1 &&
+         cur_stream->state != TCP_ST_FIN_WAIT_2 &&
+         cur_stream->state != TCP_ST_ESTABLISHED)) {
+	  	errno = ENOTCONN;
+        return -1;
+    }
 
 	rcvvar = cur_stream->rcvvar;
 	
@@ -1344,14 +1345,15 @@ mtcp_readv(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV)
 		return -1;
 	}
 
-	/* stream should be in ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, CLOSE_WAIT */
+	/* stream should be in ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2 */
 	cur_stream = socket->stream;
-	if (!cur_stream || 
-			!(cur_stream->state >= TCP_ST_ESTABLISHED && 
-			  cur_stream->state <= TCP_ST_CLOSE_WAIT)) {
+    if (cur_stream == NULL &&
+        (cur_stream->state != TCP_ST_FIN_WAIT_1 ||
+         cur_stream->state != TCP_ST_FIN_WAIT_2 ||
+         cur_stream->state != TCP_ST_ESTABLISHED)) {
 		errno = ENOTCONN;
-		return -1;
-	}
+        return -1;
+    }
 
 	rcvvar = cur_stream->rcvvar;
 
@@ -1788,9 +1790,10 @@ mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout)
 	    rcvvar = cur_stream->rcvvar;
 	    SBUF_LOCK(&rcvvar->read_lock);
 		while (rcvvar->rcvbuf->merged_len == 0) {
-		    if ((cur_stream->state != TCP_ST_SYN_SENT) &&
-	            !(cur_stream->state >= TCP_ST_ESTABLISHED && 
-			      cur_stream->state <= TCP_ST_CLOSE_WAIT)) {
+		    if (cur_stream->state != TCP_ST_SYN_SENT &&
+                cur_stream->state != TCP_ST_FIN_WAIT_1 &&
+                cur_stream->state != TCP_ST_FIN_WAIT_2 &&
+	            cur_stream->state != TCP_ST_ESTABLISHED) {
                 ret = 1;
                 break;
             }
