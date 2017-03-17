@@ -1713,7 +1713,7 @@ mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV)
         }                                           \
     } while (0)
 
-ssize_t
+int
 mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout)
 {
     struct timespec future, timeo;

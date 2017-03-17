@@ -144,6 +144,13 @@ mtcp_write(mctx_t mctx, int sockid, const char *buf, size_t len);
 int
 mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV);
 
+/*
+ * wait socket event
+ * @param event 0 read, 1 write
+ */
+int
+mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout);
+
 #ifdef __cplusplus
 };
 #endif
