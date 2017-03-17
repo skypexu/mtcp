@@ -75,8 +75,8 @@ struct tcp_recv_vars
 
 #if BLOCKING_SUPPORT
 	TAILQ_ENTRY(tcp_stream) rcv_br_link;
-	pthread_cond_t read_cond;
 #endif
+	pthread_cond_t read_cond;
 };
 
 struct tcp_send_vars
@@ -149,8 +149,8 @@ struct tcp_send_vars
 
 #if BLOCKING_SUPPORT
 	TAILQ_ENTRY(tcp_stream) snd_br_link;
-	pthread_cond_t write_cond;
 #endif
+	pthread_cond_t write_cond;
 };
 
 typedef struct tcp_stream

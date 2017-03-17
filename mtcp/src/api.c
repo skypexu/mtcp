@@ -318,6 +318,37 @@ mtcp_setsock_nonblock(mctx_t mctx, int sockid)
 
 	return 0;
 }
+
+int 
+mtcp_setsock_nonblock2(mctx_t mctx, int sockid, int enable)
+{
+	mtcp_manager_t mtcp;
+	
+	mtcp = GetMTCPManager(mctx);
+	if (!mtcp) {
+		return -1;
+	}
+
+	if (sockid < 0 || sockid >= CONFIG.max_concurrency) {
+		TRACE_API("Socket id %d out of range.\n", sockid);
+		errno = EBADF;
+		return -1;
+	}
+
+	if (mtcp->smap[sockid].socktype == MTCP_SOCK_UNUSED) {
+		TRACE_API("Invalid socket id: %d\n", sockid);
+		errno = EBADF;
+		return -1;
+	}
+
+    if (enable)
+	    mtcp->smap[sockid].opts |= MTCP_NONBLOCK;
+    else
+	    mtcp->smap[sockid].opts &= ~MTCP_NONBLOCK;
+
+	return 0;
+}
+
 /*----------------------------------------------------------------------------*/
 int 
 mtcp_socket_ioctl(mctx_t mctx, int sockid, int request, void *argp)
@@ -1670,5 +1701,111 @@ mtcp_writev(mctx_t mctx, int sockid, const struct iovec *iov, int numIOV)
 	TRACE_API("Stream %d: mtcp_writev() returning %d\n", 
 			cur_stream->id, to_write);
 	return to_write;
+}
+/*----------------------------------------------------------------------------*/
+#define timespecadd(vvp, uvp)                       \
+    do {                                            \
+        (vvp)->tv_sec += (uvp)->tv_sec;             \
+        (vvp)->tv_nsec += (uvp)->tv_nsec;           \
+        if ((vvp)->tv_nsec >= 1000000000) {         \
+            (vvp)->tv_sec++;                        \
+            (vvp)->tv_nsec -= 1000000000;           \
+        }                                           \
+    } while (0)
+
+ssize_t
+mtcp_socket_wait(mctx_t mctx, int sockid, int event, int timeout)
+{
+    struct timespec future, timeo;
+	mtcp_manager_t mtcp;
+	socket_map_t socket;
+	tcp_stream *cur_stream;
+	struct tcp_recv_vars *rcvvar;
+	struct tcp_send_vars *sndvar;
+	int ret;
+
+	mtcp = GetMTCPManager(mctx);
+	if (!mtcp) {
+		return -1;
+	}
+
+	if (sockid < 0 || sockid >= CONFIG.max_concurrency) {
+		TRACE_API("Socket id %d out of range.\n", sockid);
+		errno = EBADF;
+		return -1;
+	}
+
+	socket = &mtcp->smap[sockid];
+	if (socket->socktype == MTCP_SOCK_UNUSED) {
+		TRACE_API("Invalid socket id: %d\n", sockid);
+		errno = EBADF;
+		return -1;
+	}
+
+	if (socket->socktype == MTCP_SOCK_PIPE) {
+		TRACE_API("Pipe socket id: %di, not support\n", sockid);
+        errno = ENOTSOCK;
+        return -1;
+	}
+
+	if (socket->socktype != MTCP_SOCK_STREAM) {
+		TRACE_API("Not an end socket. id: %d\n", sockid);
+		errno = ENOTSOCK;
+		return -1;
+	}
+	
+	cur_stream = socket->stream;
+
+    ret = 0;
+
+    timeo.tv_sec = timeout/1000;
+    timeo.tv_nsec = (long)(timeout % 1000) * 1000000;
+    clock_gettime(CLOCK_REALTIME, &future);
+    timespecadd(&future, &timeo);
+
+    if (event) { // write event
+	    sndvar = cur_stream->sndvar;
+	    SBUF_LOCK(&sndvar->write_lock);
+	    while (sndvar->snd_wnd <= 0) {
+		    if (cur_stream->state != TCP_ST_SYN_SENT &&
+                cur_stream->state != TCP_ST_ESTABLISHED &&
+                cur_stream->state != TCP_ST_CLOSE_WAIT) {
+                ret = 1;
+                break;
+		    }
+		    TRACE_SNDBUF("Waiting for available sending window...\n");
+            if (timeout < 0) {
+		        pthread_cond_wait(&sndvar->write_cond, &sndvar->write_lock);
+            } else if (pthread_cond_timedwait(&sndvar->write_cond, &sndvar->write_lock, &future)) {
+                ret = 0;
+                break;
+            }
+	    }
+	    if (ret == 0 && sndvar->snd_wnd > 0)
+            ret = 1;
+	    SBUF_UNLOCK(&sndvar->write_lock);
+    } else {
+	    rcvvar = cur_stream->rcvvar;
+	    SBUF_LOCK(&rcvvar->read_lock);
+		while (rcvvar->rcvbuf->merged_len == 0) {
+		    if ((cur_stream->state != TCP_ST_SYN_SENT) &&
+	            !(cur_stream->state >= TCP_ST_ESTABLISHED && 
+			      cur_stream->state <= TCP_ST_CLOSE_WAIT)) {
+                ret = 1;
+                break;
+            }
+		    TRACE_SNDBUF("Waiting for available recv buffer...\n");
+            if (timeout < 0) {
+			    pthread_cond_wait(&rcvvar->read_cond, &rcvvar->read_lock);
+            } else if (pthread_cond_timedwait(&rcvvar->read_cond, &rcvvar->read_lock, &future)) {
+                ret = 0;
+                break;
+            }
+		}
+        if (ret == 0 && rcvvar->rcvbuf->merged_len > 0)
+            ret = 1;
+	    SBUF_UNLOCK(&rcvvar->read_lock);
+	}
+	return ret;
 }
 /*----------------------------------------------------------------------------*/

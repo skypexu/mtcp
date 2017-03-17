@@ -105,6 +105,11 @@ inline void
 RaiseReadEvent(mtcp_manager_t mtcp, tcp_stream *stream)
 {
 	if (stream->socket) {
+        struct tcp_recv_vars *rcvvar = stream->rcvvar;  
+        pthread_mutex_lock(&rcvvar->read_lock);
+        pthread_cond_broadcast(&rcvvar->read_cond);
+        pthread_mutex_unlock(&rcvvar->read_lock);
+ 
 		if (stream->socket->epoll & MTCP_EPOLLIN) {
 			AddEpollEvent(mtcp->ep, 
 					MTCP_EVENT_QUEUE, stream->socket, MTCP_EPOLLIN);
@@ -126,6 +131,11 @@ inline void
 RaiseWriteEvent(mtcp_manager_t mtcp, tcp_stream *stream)
 {
 	if (stream->socket) {
+        struct tcp_send_vars *sndvar = stream->sndvar;
+        pthread_mutex_lock(&sndvar->write_lock);
+        pthread_cond_broadcast(&sndvar->write_cond);
+        pthread_mutex_unlock(&sndvar->write_lock);
+
 		if (stream->socket->epoll & MTCP_EPOLLOUT) {
 			AddEpollEvent(mtcp->ep, 
 					MTCP_EVENT_QUEUE, stream->socket, MTCP_EPOLLOUT);
@@ -287,7 +297,6 @@ CreateTCPStream(mtcp_manager_t mtcp, socket_map_t socket, int type,
 
 	stream->sndvar->rto = TCP_INITIAL_RTO;
 
-#if BLOCKING_SUPPORT
 	if (pthread_cond_init(&stream->rcvvar->read_cond, NULL)) {
 		perror("pthread_cond_init of read_cond");
 		return NULL;
@@ -296,7 +305,6 @@ CreateTCPStream(mtcp_manager_t mtcp, socket_map_t socket, int type,
 		perror("pthread_cond_init of write_cond");
 		return NULL;
 	}
-#endif
 
 #if USE_SPIN_LOCK
 	if (pthread_spin_init(&stream->rcvvar->read_lock, PTHREAD_PROCESS_PRIVATE)) {
@@ -456,10 +464,8 @@ DestroyTCPStream(mtcp_manager_t mtcp, tcp_stream *stream)
 		mtcp->rcv_br_list_cnt--;
 	}
 
-	if (!stream->epoll) {
-		pthread_cond_signal(&stream->rcvvar->read_cond);
-		pthread_cond_signal(&stream->sndvar->write_cond);
-	}
+	pthread_cond_signal(&stream->rcvvar->read_cond);
+	pthread_cond_signal(&stream->sndvar->write_cond);
 
 	if (pthread_cond_destroy(&stream->rcvvar->read_cond)) {
 		perror("pthread_cond_destroy of read_cond");

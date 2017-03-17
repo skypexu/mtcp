@@ -9,6 +9,7 @@ AllocateSocket(mctx_t mctx, int socktype, int need_lock)
 	mtcp_manager_t mtcp = g_mtcp[mctx->cpu];
 	socket_map_t socket = NULL;
 
+    need_lock = 1; // XXX Added by xyf, we need this for MT-safe!
 	if (need_lock)
 		pthread_mutex_lock(&mtcp->ctx->smap_lock);
 
@@ -67,6 +68,7 @@ FreeSocket(mctx_t mctx, int sockid, int need_lock)
 	socket->epoll = MTCP_EPOLLNONE;
 	socket->events = 0;
 
+    need_lock = 1;
 	if (need_lock)
 		pthread_mutex_lock(&mtcp->ctx->smap_lock);
 

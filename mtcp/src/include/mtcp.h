@@ -48,7 +48,7 @@
 #define TCP_OPT_SACK_ENABLED        FALSE	/* not implemented */
 
 #define LOCK_STREAM_QUEUE	FALSE
-#define USE_SPIN_LOCK		TRUE
+#define USE_SPIN_LOCK		FALSE
 #define INTR_SLEEPING_MTCP	TRUE
 #define PROMISCUOUS_MODE	TRUE
 
